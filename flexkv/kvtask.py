@@ -199,20 +199,25 @@ class KVTaskManager:
             self.transfer_handles[0]._handle.send_config_to_remotes()
 
         if self.model_config.nnodes > 1:
-            self.transfer_handles.append(TransferManagerHandle(
+            # Bind the handle rather than reading it back with a negative
+            # index: release builds cythonize this module with
+            # wraparound=False, so ``transfer_handles[-1]`` on a list reads off
+            # the front of it instead of folding to len - 1.
+            remote_handle = TransferManagerHandle(
                 model_config,
                 cache_config,
                 mode="remote",
                 gpu_register_port=gpu_register_port,
                 master_host=self.model_config.master_host,
                 master_ports=self.model_config.master_ports,
-            ))
-            self.transfer_handles[-1]._handle.send_config_to_remotes()
+            )
+            self.transfer_handles.append(remote_handle)
+            remote_handle._handle.send_config_to_remotes()
 
-        self.tasks: ExpiringDict[int, KVTask] = ExpiringDict(max_age_seconds=1800, max_len=100000) # 30 minutes
+        self.tasks: ExpiringDict[int, KVTask] = ExpiringDict(ttl=1800) # 30 minutes
 
         # hash(token_ids) -> task_id
-        self.prefetch_tasks: ExpiringDict[int, int] = ExpiringDict(max_age_seconds=1800, max_len=100000) # 30 minutes
+        self.prefetch_tasks: ExpiringDict[int, int] = ExpiringDict(ttl=1800) # 30 minutes
         self._gen_prefetch_key = lambda token_ids, namespace: hash_token(token_ids, namespace)
 
         self.graph_to_task: Dict[int, int] = {}
